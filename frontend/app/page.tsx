@@ -21,9 +21,24 @@ const TRAIL = [
   },
 ];
 
+
+const NODE_TO_STEP: Record<string, string> = {
+  create_plan: "Plan",
+  search: "Search",
+  read: "Read",
+  synthesize: "Synthesize",
+};
+
+type AgentEvent =
+  | { type: "progress"; node: string; step?: string; detail?: string }
+  | { type: "result"; report: string }
+  | { type: "done" };
+
 export default function Home() {
   const [topic, setTopic] = useState("");
   const [loading, setLoading] = useState(false);
+  const [activeStep, setActiveStep] = useState<string | null>(null);
+  const [completedSteps, setCompletedSteps] = useState<string[]>([]);
   const [report, setReport] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,6 +49,8 @@ export default function Home() {
     setLoading(true);
     setError(null);
     setReport(null);
+    setActiveStep(null);
+    setCompletedSteps([]);
 
     try {
       const res = await fetch("/api/research", {
@@ -42,14 +59,52 @@ export default function Home() {
         body: JSON.stringify({ topic }),
       });
 
-      const data = await res.json();
-
-      if (!res.ok) {
+      if (!res.ok || !res.body) {
+        const data = await res.json().catch(() => ({}));
         setError(data.error || "Something went wrong.");
+        setLoading(false);
         return;
       }
 
-      setReport(data.report);
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        const messages = buffer.split("\n\n");
+        buffer = messages.pop() || ""; 
+
+        for (const msg of messages) {
+          const line = msg.replace(/^data: /, "").trim();
+          if (!line) continue;
+
+          let event: AgentEvent;
+          try {
+            event = JSON.parse(line);
+          } catch {
+            continue;
+          }
+
+          if (event.type === "progress") {
+            const stepLabel = NODE_TO_STEP[event.node];
+            if (stepLabel) {
+              setActiveStep(stepLabel);
+              setCompletedSteps((prev) =>
+                prev.includes(stepLabel) ? prev : [...prev, stepLabel]
+              );
+            }
+          } else if (event.type === "result") {
+            setReport(event.report);
+          } else if (event.type === "done") {
+            setActiveStep(null);
+          }
+        }
+      }
     } catch (err) {
       setError("Could not reach the server. Is the backend running?");
     } finally {
@@ -61,20 +116,19 @@ export default function Home() {
     <main className="min-h-screen bg-[#F0EEE4] text-[#20241F] font-sans">
       <div className="mx-auto max-w-5xl px-6 py-20 md:py-28">
         <div className="grid md:grid-cols-[1.1fr_0.9fr] gap-16 md:gap-12">
-          
           <div className="animate-[fadeUp_0.6s_ease-out]">
             <h1 className="font-serif text-[2.75rem] md:text-[3.4rem] leading-[1.05] font-semibold tracking-tight text-[#20241F]">
-                  Start your research.
-                      <br />
-                  Finish with a cited report.
+              Start your research.
+              <br />
+              Finish with a cited report.
             </h1>
             <p className="mt-5 max-w-md text-[1.05rem] leading-relaxed text-[#5B6B5E]">
-              It plans, searches, reads every source, and writes up what it finds.
+              It plans, searches, reads every source, and writes up what it
+              finds.
             </p>
 
             <form onSubmit={handleSubmit} className="mt-10">
               <div className="relative border border-[#20241F]/15 bg-[#F7F5EE] rounded-sm">
-               
                 <div className="absolute -top-3 left-5 bg-[#B8863B] text-[#F7F5EE] text-xs font-medium px-2.5 py-1 rounded-sm">
                   Topic
                 </div>
@@ -96,7 +150,6 @@ export default function Home() {
               </button>
             </form>
 
-            
             {error && (
               <div className="mt-6 border border-[#B8863B]/40 bg-[#B8863B]/10 text-[#8A6329] text-sm px-4 py-3 rounded-sm">
                 {error}
@@ -117,20 +170,48 @@ export default function Home() {
 
           <div className="flex flex-col justify-center">
             <div className="border-l-2 border-[#B8863B]/40 pl-6 flex flex-col gap-7">
-              {TRAIL.map((step, i) => (
-                <div key={step.label} className="relative">
-                  <div className="absolute -left-[31px] top-1 w-2.5 h-2.5 rounded-full bg-[#B8863B]" />
-                  <div className="text-xs text-[#5B6B5E] mb-1">
-                    {String(i + 1).padStart(2, "0")}
+              {TRAIL.map((step, i) => {
+                const isActive = activeStep === step.label;
+                const isDone =
+                  completedSteps.includes(step.label) && !isActive;
+
+                return (
+                  <div key={step.label} className="relative">
+                    <div
+                      className={`absolute -left-[31px] top-1 w-2.5 h-2.5 rounded-full transition-colors ${
+                        isActive
+                          ? "bg-[#B8863B] animate-pulse"
+                          : isDone
+                          ? "bg-[#5B6B5E]"
+                          : "bg-[#B8863B]/30"
+                      }`}
+                    />
+                    <div className="text-xs text-[#5B6B5E] mb-1">
+                      {String(i + 1).padStart(2, "0")}
+                      {isActive && (
+                        <span className="ml-2 text-[#B8863B]">
+                          — in progress
+                        </span>
+                      )}
+                      {isDone && (
+                        <span className="ml-2 text-[#5B6B5E]">— done</span>
+                      )}
+                    </div>
+                    <div
+                      className={`font-serif text-lg font-semibold transition-colors ${
+                        isActive || isDone
+                          ? "text-[#20241F]"
+                          : "text-[#20241F]/50"
+                      }`}
+                    >
+                      {step.label}
+                    </div>
+                    <div className="text-sm text-[#5B6B5E] leading-relaxed mt-0.5">
+                      {step.detail}
+                    </div>
                   </div>
-                  <div className="font-serif text-lg font-semibold text-[#20241F]">
-                    {step.label}
-                  </div>
-                  <div className="text-sm text-[#5B6B5E] leading-relaxed mt-0.5">
-                    {step.detail}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
