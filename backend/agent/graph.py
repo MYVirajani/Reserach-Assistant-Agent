@@ -15,7 +15,7 @@ from .state import AgentState
 from .tools import web_search, fetch_and_extract
 from .prompts import PLAN_PROMPT, SYNTHESIS_PROMPT
 
-llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0)
+llm = ChatGoogleGenerativeAI(model="gemini-3.6-flash", temperature=0)
 
 
 
