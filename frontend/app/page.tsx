@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 const TRAIL = [
   {
@@ -41,6 +43,8 @@ export default function Home() {
   const [completedSteps, setCompletedSteps] = useState<string[]>([]);
   const [report, setReport] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const reportRef = useRef<HTMLDivElement>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,6 +80,7 @@ export default function Home() {
 
         buffer += decoder.decode(value, { stream: true });
 
+    
         const messages = buffer.split("\n\n");
         buffer = messages.pop() || ""; 
 
@@ -87,7 +92,7 @@ export default function Home() {
           try {
             event = JSON.parse(line);
           } catch {
-            continue;
+            continue; 
           }
 
           if (event.type === "progress") {
@@ -109,6 +114,71 @@ export default function Home() {
       setError("Could not reach the server. Is the backend running?");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDownload = () => {
+    if (!report) return;
+
+    const blob = new Blob([report], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${getFilename()}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const getFilename = () =>
+    topic
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .slice(0, 50) || "research-report";
+
+  const handleDownloadPdf = async () => {
+    if (!reportRef.current || exportingPdf) return;
+    setExportingPdf(true);
+
+    try {
+      
+      const html2canvas = (await import("html2canvas")).default;
+      const { jsPDF } = await import("jspdf");
+
+      const canvas = await html2canvas(reportRef.current, {
+        scale: 2, 
+        backgroundColor: "#F7F5EE",
+      });
+
+      const imgData = canvas.toDataURL("image/png");
+
+      
+      const pdf = new jsPDF({ unit: "pt", format: "a4" });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 32;
+
+      const imgWidth = pageWidth - margin * 2;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+      let heightLeft = imgHeight;
+      let position = margin;
+
+      pdf.addImage(imgData, "PNG", margin, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight - margin * 2;
+
+      while (heightLeft > 0) {
+        position = heightLeft - imgHeight - margin; 
+        pdf.addPage();
+        pdf.addImage(imgData, "PNG", margin, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight - margin * 2;
+      }
+
+      pdf.save(`${getFilename()}.pdf`);
+    } catch (err) {
+      setError("Could not generate PDF. Try the Markdown download instead.");
+    } finally {
+      setExportingPdf(false);
     }
   };
 
@@ -157,17 +227,40 @@ export default function Home() {
             )}
 
             {report && (
-              <div className="mt-8 border border-[#20241F]/15 bg-[#F7F5EE] rounded-sm p-5">
-                <div className="text-xs uppercase tracking-wide text-[#5B6B5E] mb-3">
-                  Report
+              <div className="mt-8 border border-[#20241F]/15 bg-[#F7F5EE] rounded-sm">
+                <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-[#20241F]/10">
+                  <div className="text-xs uppercase tracking-wide text-[#5B6B5E]">
+                    Report
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <button
+                      onClick={handleDownloadPdf}
+                      disabled={exportingPdf}
+                      className="text-xs font-medium text-[#B8863B] hover:text-[#8A6329] disabled:opacity-50 transition-colors"
+                    >
+                      {exportingPdf ? "Preparing PDF…" : "Download PDF ↓"}
+                    </button>
+                    <button
+                      onClick={handleDownload}
+                      className="text-xs font-medium text-[#B8863B] hover:text-[#8A6329] transition-colors"
+                    >
+                      Download .md ↓
+                    </button>
+                  </div>
                 </div>
-                <pre className="whitespace-pre-wrap text-sm leading-relaxed text-[#20241F] font-sans">
-                  {report}
-                </pre>
+
+                <div className="max-h-[420px] overflow-y-auto px-5 py-4">
+                  <article ref={reportRef} className="prose-report">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {report}
+                    </ReactMarkdown>
+                  </article>
+                </div>
               </div>
             )}
           </div>
 
+          
           <div className="flex flex-col justify-center">
             <div className="border-l-2 border-[#B8863B]/40 pl-6 flex flex-col gap-7">
               {TRAIL.map((step, i) => {
@@ -227,6 +320,68 @@ export default function Home() {
         }
         .font-sans {
           font-family: var(--font-sans);
+        }
+        .prose-report {
+          font-size: 0.9rem;
+          line-height: 1.7;
+          color: #20241f;
+        }
+        .prose-report h1,
+        .prose-report h2,
+        .prose-report h3 {
+          font-family: var(--font-serif);
+          font-weight: 600;
+          margin-top: 1.4em;
+          margin-bottom: 0.5em;
+          color: #20241f;
+        }
+        .prose-report h1 {
+          font-size: 1.4rem;
+        }
+        .prose-report h2 {
+          font-size: 1.2rem;
+        }
+        .prose-report h3 {
+          font-size: 1.05rem;
+        }
+        .prose-report p {
+          margin-bottom: 0.9em;
+        }
+        .prose-report ul,
+        .prose-report ol {
+          margin-bottom: 0.9em;
+          padding-left: 1.4em;
+        }
+        .prose-report li {
+          margin-bottom: 0.3em;
+        }
+        .prose-report a {
+          color: #b8863b;
+          text-decoration: underline;
+          text-underline-offset: 2px;
+        }
+        .prose-report code {
+          background: #20241f0d;
+          padding: 0.15em 0.4em;
+          border-radius: 3px;
+          font-size: 0.85em;
+        }
+        .prose-report hr {
+          border: none;
+          border-top: 1px solid #20241f1a;
+          margin: 1.4em 0;
+        }
+        .prose-report table {
+          width: 100%;
+          border-collapse: collapse;
+          margin-bottom: 1em;
+          font-size: 0.85em;
+        }
+        .prose-report th,
+        .prose-report td {
+          border: 1px solid #20241f1a;
+          padding: 0.4em 0.6em;
+          text-align: left;
         }
         @keyframes fadeUp {
           from {
