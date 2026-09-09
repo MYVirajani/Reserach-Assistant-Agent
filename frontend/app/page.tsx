@@ -184,13 +184,22 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-[#F0EEE4] text-[#20241F] font-sans">
+      <div className="mx-auto max-w-5xl px-6 pt-10 md:pt-12">
+        <div className="flex items-center gap-2">
+          <img src="/icon.svg" alt="" className="w-8 h-8" />
+          <span className="font-hand text-[1.9rem] leading-none text-[#20241F] -mt-1">
+            Smart Researcher
+          </span>
+        </div>
+      </div>
+
       <div className="mx-auto max-w-5xl px-6 py-20 md:py-28">
         <div className="grid md:grid-cols-[1.1fr_0.9fr] gap-16 md:gap-12">
           <div className="animate-[fadeUp_0.6s_ease-out]">
             <h1 className="font-serif text-[2.75rem] md:text-[3.4rem] leading-[1.05] font-semibold tracking-tight text-[#20241F]">
-              Start your research.
+              Share your topic.
               <br />
-              Finish with a cited report.
+              Get a complete research report.
             </h1>
             <p className="mt-5 max-w-md text-[1.05rem] leading-relaxed text-[#5B6B5E]">
               It plans, searches, reads every source, and writes up what it
