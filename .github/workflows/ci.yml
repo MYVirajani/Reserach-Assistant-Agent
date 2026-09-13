@@ -23,7 +23,6 @@ jobs:
       - name: Check backend imports cleanly
         working-directory: backend
         env:
-          
           GOOGLE_API_KEY: dummy
           TAVILY_API_KEY: dummy
         run: python -c "import main"
@@ -51,7 +50,7 @@ jobs:
       - name: Build
         run: npm run build
 
-
+  
   publish-images:
     needs: [backend, frontend]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -69,16 +68,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set lowercase repository owner
+        run: echo "OWNER_LC=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
+
       - name: Build and push backend image
         uses: docker/build-push-action@v5
         with:
           context: ./backend
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/research-agent-backend:latest
+          tags: ghcr.io/${{ env.OWNER_LC }}/research-agent-backend:latest
 
       - name: Build and push frontend image
         uses: docker/build-push-action@v5
         with:
           context: ./frontend
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/research-agent-frontend:latest
+          tags: ghcr.io/${{ env.OWNER_LC }}/research-agent-frontend:latest
